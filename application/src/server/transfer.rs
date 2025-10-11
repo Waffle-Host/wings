@@ -103,6 +103,7 @@ impl OutgoingServerTransfer {
     }
 
     async fn transfer_failure(server: &super::Server) {
+        server.send_webhook("transfer_fail", None).await;
         server
             .app_state
             .config
@@ -142,6 +143,7 @@ impl OutgoingServerTransfer {
         );
 
         let old_task = self.task.replace(tokio::spawn(async move {
+            server.send_webhook("transfer_start", None).await;
             if server.state.get_state() != super::state::ServerState::Offline
                 && let Err(err) = server
                     .stop_with_kill_timeout(std::time::Duration::from_secs(15), true)
@@ -439,6 +441,7 @@ impl OutgoingServerTransfer {
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+                server.send_webhook("transfer_complete", None).await;
                 server
                     .websocket
                     .send(super::websocket::WebsocketMessage::new(

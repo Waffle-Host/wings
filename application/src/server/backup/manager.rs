@@ -100,6 +100,10 @@ impl BackupManager {
             "creating backup",
         );
 
+        server
+            .send_webhook("backup_start", Some(uuid.to_string()))
+            .await;
+
         let mut ignore_builder = GitignoreBuilder::new("");
         let mut ignore_raw = String::new();
 
@@ -184,6 +188,9 @@ impl BackupManager {
                     .set_backup_status(uuid, &RawServerBackup::default())
                     .await?;
                 server
+                    .send_webhook("backup_fail", Some(uuid.to_string()))
+                    .await;
+                server
                     .websocket
                     .send(crate::server::websocket::WebsocketMessage::new(
                         crate::server::websocket::WebsocketEvent::ServerBackupCompleted,
@@ -220,6 +227,9 @@ impl BackupManager {
             .client
             .set_backup_status(uuid, &backup)
             .await?;
+        server
+            .send_webhook("backup_complete", Some(uuid.to_string()))
+            .await;
         server
             .websocket
             .send(crate::server::websocket::WebsocketMessage::new(
@@ -278,6 +288,9 @@ impl BackupManager {
 
             server.restoring.store(false, Ordering::SeqCst);
             server
+                .send_webhook("restore_fail", Some(backup.uuid().to_string()))
+                .await;
+            server
                 .app_state
                 .config
                 .client
@@ -294,6 +307,10 @@ impl BackupManager {
             "restoring backup",
         );
 
+        server
+            .send_webhook("restore_start", Some(backup.uuid().to_string()))
+            .await;
+
         if truncate_directory && let Err(err) = server.filesystem.truncate_root().await {
             tracing::error!(
                 server = %server.uuid,
@@ -303,6 +320,9 @@ impl BackupManager {
             );
 
             server.restoring.store(false, Ordering::SeqCst);
+            server
+                .send_webhook("restore_fail", Some(backup.uuid().to_string()))
+                .await;
             server
                 .app_state
                 .config
@@ -366,6 +386,9 @@ impl BackupManager {
                     ))
                     .await;
                 server
+                    .send_webhook("restore_complete", Some(backup.uuid().to_string()))
+                    .await;
+                server
                     .app_state
                     .config
                     .client
@@ -391,6 +414,9 @@ impl BackupManager {
                 progress_task.abort();
 
                 server.restoring.store(false, Ordering::SeqCst);
+                server
+                    .send_webhook("restore_fail", Some(backup.uuid().to_string()))
+                    .await;
                 server
                     .app_state
                     .config

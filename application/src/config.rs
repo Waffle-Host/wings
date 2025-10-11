@@ -349,6 +349,14 @@ nestify::nest! {
             pub upload_limit: usize,
             #[serde(default)]
             pub trusted_proxies: Vec<std::net::IpAddr>,
+
+            #[serde(default)]
+            pub webhook: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Webhook {
+                #[serde(default)]
+                pub url: String,
+                #[serde(default)]
+                pub token: String,
+            },
         },
         #[serde(default)]
         pub system: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct System {

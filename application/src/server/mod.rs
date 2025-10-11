@@ -19,6 +19,7 @@ pub mod activity;
 pub mod backup;
 pub mod configuration;
 pub mod container;
+pub mod event;
 pub mod filesystem;
 pub mod installation;
 pub mod manager;
@@ -28,6 +29,7 @@ pub mod schedule;
 pub mod script;
 pub mod state;
 pub mod transfer;
+pub mod webhook;
 pub mod websocket;
 
 pub struct InnerServer {
@@ -293,6 +295,7 @@ impl Server {
                                 }
 
                                 server.schedules.execute_crash_trigger().await;
+                                server.send_webhook("crash", Some(format!("exit code: {}", container_state.exit_code.unwrap_or_default()))).await;
 
                                 server.log_daemon_with_prelude("---------- Detected server process in a crashed state! ----------").await;
                                 server
@@ -980,6 +983,8 @@ impl Server {
                             server.schedules.execute_power_action_trigger(crate::models::ServerPowerAction::Start).await;
                         }
 
+                        server.send_webhook("start", None).await;
+
                         Ok(())
                     },
                     Ok(false) => {
@@ -1029,6 +1034,7 @@ impl Server {
                         .execute_power_action_trigger(crate::models::ServerPowerAction::Kill)
                         .await;
                 }
+                server.send_webhook("kill", None).await;
                 server.reset_state().await;
             }
 
@@ -1170,6 +1176,8 @@ impl Server {
                             server.schedules.execute_power_action_trigger(crate::models::ServerPowerAction::Stop).await;
                         }
 
+                        server.send_webhook("stop", None).await;
+
                         Ok(())
                     },
                     Ok(false) => {
@@ -1214,6 +1222,8 @@ impl Server {
                 server.start(aquire_timeout, true).await?;
             }
 
+            server.send_webhook("restart", None).await;
+
             server
                 .schedules
                 .execute_power_action_trigger(crate::models::ServerPowerAction::Restart)
@@ -1250,6 +1260,8 @@ impl Server {
             } else {
                 server.start(aquire_timeout, true).await?;
             }
+
+            server.send_webhook("restart", None).await;
 
             server
                 .schedules
@@ -1375,6 +1387,7 @@ impl Server {
         self.suspended.store(true, Ordering::SeqCst);
         self.kill(true).await.ok();
         self.destroy_container().await;
+        self.send_webhook("destroy", None).await;
 
         tokio::spawn({
             let server = self.clone();
@@ -1390,6 +1403,23 @@ impl Server {
             "utilization": self.resource_usage().await,
             "configuration": *self.configuration.read().await,
         })
+    }
+
+    pub async fn send_webhook(&self, event: &'static str, data: Option<String>) {
+        let config = self.app_state.config.clone();
+        let uuid = self.uuid;
+
+        tokio::spawn(async move {
+            webhook::send(
+                &config,
+                &event::Event {
+                    uuid,
+                    event: event.to_string(),
+                    data,
+                },
+            )
+            .await;
+        });
     }
 }
 

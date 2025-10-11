@@ -222,6 +222,7 @@ pub async fn install_server(
     }
 
     server.installing.store(true, Ordering::SeqCst);
+    server.send_webhook("install_start", None).await;
     server
         .websocket
         .send(super::websocket::WebsocketMessage::new(
@@ -243,6 +244,12 @@ pub async fn install_server(
     let unset_installing = async |successful: bool| {
         server.installing.store(false, Ordering::SeqCst);
         server.installation_script.write().await.take();
+
+        if successful {
+            server.send_webhook("install_complete", None).await;
+        } else {
+            server.send_webhook("install_fail", None).await;
+        }
 
         let environment = server
             .configuration
@@ -540,6 +547,7 @@ pub async fn attach_install_container(
     reinstall: bool,
 ) -> Result<(), anyhow::Error> {
     server.installing.store(true, Ordering::SeqCst);
+    server.send_webhook("install_start", None).await;
     *server.installation_script.write().await = Some((reinstall, container_script.clone()));
     server
         .websocket
@@ -604,6 +612,12 @@ pub async fn attach_install_container(
     let unset_installing = async |successful: bool| {
         server.installing.store(false, Ordering::SeqCst);
         server.installation_script.write().await.take();
+
+        if successful {
+            server.send_webhook("install_complete", None).await;
+        } else {
+            server.send_webhook("install_fail", None).await;
+        }
 
         let environment = server
             .configuration
