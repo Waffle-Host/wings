@@ -26,7 +26,10 @@ async fn container_config(
     script: &InstallationScript,
 ) -> tokio::io::Result<bollard::container::Config<String>> {
     let labels = HashMap::from([
-        ("Service".to_string(), "Pterodactyl".to_string()),
+        (
+            "Service".to_string(),
+            server.app_state.config.app_name.clone(),
+        ),
         ("ContainerType".to_string(), "server_installer".to_string()),
     ]);
 
@@ -170,7 +173,7 @@ async fn cleanup_container(
     let mut file = tokio::io::BufWriter::new(tokio::fs::File::create(&log_path).await?);
     file.write_all(
         format!(
-            r"Pterodactyl Server Installation Log
+            r"Server Installation Log
 
 |
 | Details
@@ -227,7 +230,7 @@ pub async fn install_server(
         .websocket
         .send(super::websocket::WebsocketMessage::new(
             super::websocket::WebsocketEvent::ServerInstallStarted,
-            &[],
+            [].into(),
         ))?;
 
     tracing::info!(
@@ -313,7 +316,7 @@ pub async fn install_server(
             .websocket
             .send(super::websocket::WebsocketMessage::new(
                 super::websocket::WebsocketEvent::ServerInstallCompleted,
-                &[],
+                [].into(),
             ))
     };
 
@@ -438,7 +441,7 @@ pub async fn install_server(
                                         .websocket
                                         .send(super::websocket::WebsocketMessage::new(
                                             super::websocket::WebsocketEvent::ServerInstallOutput,
-                                            &[line],
+                                            [line].into(),
                                         ))
                                         .ok();
 
@@ -454,7 +457,7 @@ pub async fn install_server(
                                         .websocket
                                         .send(super::websocket::WebsocketMessage::new(
                                             super::websocket::WebsocketEvent::ServerInstallOutput,
-                                            &[line],
+                                            [line].into(),
                                         ))
                                         .ok();
 
@@ -473,7 +476,7 @@ pub async fn install_server(
                                         .websocket
                                         .send(super::websocket::WebsocketMessage::new(
                                             super::websocket::WebsocketEvent::ServerInstallOutput,
-                                            &[line],
+                                            [line].into(),
                                         ))
                                         .ok();
 
@@ -499,7 +502,7 @@ pub async fn install_server(
                             .websocket
                             .send(super::websocket::WebsocketMessage::new(
                                 super::websocket::WebsocketEvent::ServerInstallOutput,
-                                &[line],
+                                [line].into(),
                             ))
                             .ok();
                     }
@@ -553,7 +556,7 @@ pub async fn attach_install_container(
         .websocket
         .send(super::websocket::WebsocketMessage::new(
             super::websocket::WebsocketEvent::ServerInstallStarted,
-            &[],
+            [].into(),
         ))?;
 
     let container_id = Mutex::new(None);
@@ -665,7 +668,7 @@ pub async fn attach_install_container(
             .websocket
             .send(super::websocket::WebsocketMessage::new(
                 super::websocket::WebsocketEvent::ServerInstallCompleted,
-                &[],
+                [].into(),
             ))
     };
 
@@ -731,7 +734,7 @@ pub async fn attach_install_container(
                                         .websocket
                                         .send(super::websocket::WebsocketMessage::new(
                                             super::websocket::WebsocketEvent::ServerInstallOutput,
-                                            &[line],
+                                            [line].into(),
                                         ))
                                         .ok();
 
@@ -747,7 +750,7 @@ pub async fn attach_install_container(
                                         .websocket
                                         .send(super::websocket::WebsocketMessage::new(
                                             super::websocket::WebsocketEvent::ServerInstallOutput,
-                                            &[line],
+                                            [line].into(),
                                         ))
                                         .ok();
 
@@ -766,7 +769,7 @@ pub async fn attach_install_container(
                                         .websocket
                                         .send(super::websocket::WebsocketMessage::new(
                                             super::websocket::WebsocketEvent::ServerInstallOutput,
-                                            &[line],
+                                            [line].into(),
                                         ))
                                         .ok();
 
@@ -792,7 +795,7 @@ pub async fn attach_install_container(
                             .websocket
                             .send(super::websocket::WebsocketMessage::new(
                                 super::websocket::WebsocketEvent::ServerInstallOutput,
-                                &[line],
+                                [line].into(),
                             ))
                             .ok();
                     }
@@ -837,6 +840,7 @@ pub async fn attach_install_container(
     }
 
     unset_installing(true).await?;
+    server.filesystem.rerun_disk_checker();
 
     Ok(())
 }

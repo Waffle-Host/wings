@@ -133,11 +133,16 @@ impl SftpSession {
 
     #[inline]
     async fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
-        Self::is_ignored_server(&self.server, path, is_dir).await
+        Self::is_ignored_server(&self.server, self.user_uuid, path, is_dir).await
     }
 
     #[inline]
-    async fn is_ignored_server(server: &crate::server::Server, path: &Path, is_dir: bool) -> bool {
+    async fn is_ignored_server(
+        server: &crate::server::Server,
+        user_uuid: uuid::Uuid,
+        path: &Path,
+        is_dir: bool,
+    ) -> bool {
         if path == Path::new("/") || path == Path::new("") {
             return false;
         }
@@ -145,7 +150,7 @@ impl SftpSession {
         server.filesystem.is_ignored(path, is_dir).await
             || server
                 .user_permissions
-                .is_ignored(uuid::Uuid::nil(), path, is_dir)
+                .is_ignored(user_uuid, path, is_dir)
                 .await
     }
 
@@ -207,13 +212,22 @@ impl russh_sftp::server::Handler for SftpSession {
             });
         }
 
-        if let Ok(path) = self.server.filesystem.async_canonicalize(path).await {
+        if let Ok(path) = self.server.filesystem.async_canonicalize(&path).await {
             Ok(Name {
                 id,
                 files: vec![File::dummy(format!("/{}", path.display()))],
             })
         } else {
-            Err(StatusCode::NoSuchFile)
+            Ok(Name {
+                id,
+                files: vec![File::dummy(format!(
+                    "/{}",
+                    self.server
+                        .filesystem
+                        .relative_path(Path::new(&path))
+                        .display()
+                ))],
+            })
         }
     }
 
@@ -292,7 +306,8 @@ impl russh_sftp::server::Handler for SftpSession {
                 Err(_) => continue,
             };
 
-            if Self::is_ignored_server(&self.server, &path, metadata.is_dir()).await {
+            if Self::is_ignored_server(&self.server, self.user_uuid, &path, metadata.is_dir()).await
+            {
                 continue;
             }
 

@@ -14,6 +14,7 @@ use std::{
 };
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
+use utoipa::ToSchema;
 
 fn app_name() -> String {
     "Pterodactyl".to_string()
@@ -53,6 +54,9 @@ fn api_file_compression_threads() -> usize {
 }
 fn api_upload_limit() -> usize {
     100
+}
+fn api_max_jwt_uses() -> usize {
+    5
 }
 
 fn system_root_directory() -> String {
@@ -293,7 +297,7 @@ fn remote_query_retry_limit() -> u64 {
 }
 
 nestify::nest! {
-    #[derive(Deserialize, Serialize, DefaultFromSerde)]
+    #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)]
     pub struct InnerConfig {
         #[serde(default)]
         pub debug: bool,
@@ -308,14 +312,17 @@ nestify::nest! {
         pub token: String,
 
         #[serde(default)]
-        pub api: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Api {
+        #[schema(inline)]
+        pub api: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Api {
             #[serde(default = "api_host")]
+            #[schema(value_type = String)]
             pub host: std::net::IpAddr,
             #[serde(default = "api_port")]
             pub port: u16,
 
             #[serde(default)]
-            pub ssl: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct ApiSsl {
+            #[schema(inline)]
+            pub ssl: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct ApiSsl {
                 #[serde(default)]
                 pub enabled: bool,
                 #[serde(default)]
@@ -331,6 +338,7 @@ nestify::nest! {
             #[serde(default = "api_server_remote_download_limit")]
             pub server_remote_download_limit: usize,
             #[serde(default = "api_remote_download_blocked_cidrs")]
+            #[schema(value_type = Vec<String>)]
             pub remote_download_blocked_cidrs: Vec<cidr::IpCidr>,
             #[serde(default)]
             pub disable_directory_size: bool,
@@ -345,9 +353,12 @@ nestify::nest! {
             #[serde(default = "api_file_compression_threads")]
             pub file_compression_threads: usize,
             #[serde(default = "api_upload_limit")]
-            /// MB
+            /// MiB
             pub upload_limit: usize,
+            #[serde(default = "api_max_jwt_uses")]
+            pub max_jwt_uses: usize,
             #[serde(default)]
+            #[schema(value_type = Vec<String>)]
             pub trusted_proxies: Vec<std::net::IpAddr>,
 
             #[serde(default)]
@@ -359,7 +370,8 @@ nestify::nest! {
             },
         },
         #[serde(default)]
-        pub system: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct System {
+        #[schema(inline)]
+        pub system: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct System {
             #[serde(default = "system_root_directory")]
             pub root_directory: String,
             #[serde(default = "system_log_directory")]
@@ -379,9 +391,11 @@ nestify::nest! {
             pub timezone: String,
 
             #[serde(default)]
-            pub user: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemUser {
+            #[schema(inline)]
+            pub user: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemUser {
                 #[serde(default)]
-                pub rootless: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemUserRootless {
+                #[schema(inline)]
+                pub rootless: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemUserRootless {
                     #[serde(default)]
                     pub enabled: bool,
                     #[serde(default)]
@@ -397,7 +411,8 @@ nestify::nest! {
             },
 
             #[serde(default)]
-            pub passwd: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemPasswd {
+            #[schema(inline)]
+            pub passwd: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemPasswd {
                 #[serde(default)]
                 pub enabled: bool,
                 #[serde(default = "system_passwd_directory")]
@@ -409,7 +424,7 @@ nestify::nest! {
             #[serde(default = "system_disk_check_threads")]
             pub disk_check_threads: usize,
             #[serde(default)]
-            pub disk_limiter_mode: #[derive(Deserialize, Serialize, Default)] #[serde(rename_all = "snake_case")] pub enum SystemDiskLimiterMode {
+            pub disk_limiter_mode: #[derive(ToSchema, Deserialize, Serialize, Default)] #[serde(rename_all = "snake_case")] pub enum SystemDiskLimiterMode {
                 #[default]
                 None,
                 BtrfsSubvolume,
@@ -428,8 +443,10 @@ nestify::nest! {
             pub websocket_log_count: usize,
 
             #[serde(default)]
-            pub sftp: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemSftp {
+            #[schema(inline)]
+            pub sftp: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemSftp {
                 #[serde(default = "system_sftp_bind_address")]
+                #[schema(value_type = String)]
                 pub bind_address: std::net::IpAddr,
                 #[serde(default = "system_sftp_bind_port")]
                 pub bind_port: u16,
@@ -446,12 +463,14 @@ nestify::nest! {
                 pub directory_entry_send_amount: usize,
 
                 #[serde(default)]
-                pub shell: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemSftpShell {
+                #[schema(inline)]
+                pub shell: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemSftpShell {
                     #[serde(default = "system_sftp_shell_enabled")]
                     pub enabled: bool,
 
                     #[serde(default)]
-                    pub cli: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemSftpShellCli {
+                    #[schema(inline)]
+                    pub cli: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemSftpShellCli {
                         #[serde(default = "system_sftp_shell_cli_name")]
                         pub name: String,
                     },
@@ -459,7 +478,8 @@ nestify::nest! {
             },
 
             #[serde(default)]
-            pub crash_detection: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemCrashDetection {
+            #[schema(inline)]
+            pub crash_detection: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemCrashDetection {
                 #[serde(default = "system_crash_detection_enabled")]
                 pub enabled: bool,
                 #[serde(default = "system_crash_detection_detect_clean_exit_as_crash")]
@@ -469,7 +489,8 @@ nestify::nest! {
             },
 
             #[serde(default)]
-            pub backups: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackups {
+            #[schema(inline)]
+            pub backups: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackups {
                 #[serde(default)]
                 /// MiB/s
                 pub write_limit: u64,
@@ -480,7 +501,8 @@ nestify::nest! {
                 pub compression_level: crate::io::compression::CompressionLevel,
 
                 #[serde(default)]
-                pub mounting: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsMounting {
+                #[schema(inline)]
+                pub mounting: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsMounting {
                     #[serde(default = "system_backup_mounting_enabled")]
                     pub enabled: bool,
                     #[serde(default = "system_backup_mounting_path")]
@@ -488,7 +510,8 @@ nestify::nest! {
                 },
 
                 #[serde(default)]
-                pub wings: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsWings {
+                #[schema(inline)]
+                pub wings: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsWings {
                     #[serde(default = "system_backup_wings_create_threads")]
                     pub create_threads: usize,
                     #[serde(default = "system_backup_wings_restore_threads")]
@@ -498,7 +521,8 @@ nestify::nest! {
                     pub archive_format: crate::server::filesystem::archive::ArchiveFormat,
                 },
                 #[serde(default)]
-                pub s3: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsS3 {
+                #[schema(inline)]
+                pub s3: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsS3 {
                     #[serde(default = "system_backup_s3_create_threads")]
                     pub create_threads: usize,
                     #[serde(default = "system_backup_s3_part_upload_timeout")]
@@ -507,12 +531,13 @@ nestify::nest! {
                     pub retry_limit: u64,
                 },
                 #[serde(default)]
-                pub ddup_bak: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsDdupBak {
+                #[schema(inline)]
+                pub ddup_bak: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsDdupBak {
                     #[serde(default = "system_backup_ddup_bak_create_threads")]
                     pub create_threads: usize,
 
                     #[serde(default)]
-                    pub compression_format: #[derive(Clone, Copy, Deserialize, Serialize, Default)] #[serde(rename_all = "snake_case")] pub enum SystemBackupsDdupBakCompressionFormat {
+                    pub compression_format: #[derive(ToSchema, Clone, Copy, Deserialize, Serialize, Default)] #[serde(rename_all = "snake_case")] pub enum SystemBackupsDdupBakCompressionFormat {
                         None,
                         #[default]
                         Deflate,
@@ -521,7 +546,8 @@ nestify::nest! {
                     },
                 },
                 #[serde(default)]
-                pub restic: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsRestic {
+                #[schema(inline)]
+                pub restic: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsRestic {
                     #[serde(default = "system_backup_restic_repository")]
                     pub repository: String,
                     #[serde(default = "system_backup_restic_password_file")]
@@ -533,7 +559,8 @@ nestify::nest! {
                     pub environment: BTreeMap<String, String>,
                 },
                 #[serde(default)]
-                pub btrfs: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsBtrfs {
+                #[schema(inline)]
+                pub btrfs: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsBtrfs {
                     #[serde(default = "system_backup_btrfs_restore_threads")]
                     pub restore_threads: usize,
 
@@ -541,21 +568,24 @@ nestify::nest! {
                     pub create_read_only: bool,
                 },
                 #[serde(default)]
-                pub zfs: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsZfs {
+                #[schema(inline)]
+                pub zfs: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemBackupsZfs {
                     #[serde(default = "system_backup_zfs_restore_threads")]
                     pub restore_threads: usize,
                 },
             },
 
             #[serde(default)]
-            pub transfers: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemTransfers {
+            #[schema(inline)]
+            pub transfers: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct SystemTransfers {
                 #[serde(default)]
                 /// MiB/s
                 pub download_limit: u64,
             },
         },
         #[serde(default)]
-        pub docker: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Docker {
+        #[schema(inline)]
+        pub docker: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Docker {
             #[serde(default = "docker_socket")]
             pub socket: String,
             #[serde(default)]
@@ -564,7 +594,8 @@ nestify::nest! {
             pub delete_container_on_stop: bool,
 
             #[serde(default)]
-            pub network: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetwork {
+            #[schema(inline)]
+            pub network: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetwork {
                 #[serde(default = "docker_network_interface")]
                 pub interface: String,
                 #[serde(default)]
@@ -588,16 +619,19 @@ nestify::nest! {
                 pub network_mtu: u64,
 
                 #[serde(default)]
-                pub interfaces: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetworkInterfaces {
+                #[schema(inline)]
+                pub interfaces: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetworkInterfaces {
                     #[serde(default)]
-                    pub v4: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetworkInterfacesV4 {
+                    #[schema(inline)]
+                    pub v4: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetworkInterfacesV4 {
                         #[serde(default = "docker_network_interfaces_v4_subnet")]
                         pub subnet: String,
                         #[serde(default = "docker_network_interfaces_v4_gateway")]
                         pub gateway: String,
                     },
                     #[serde(default)]
-                    pub v6: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetworkInterfacesV6 {
+                    #[schema(inline)]
+                    pub v6: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerNetworkInterfacesV6 {
                         #[serde(default = "docker_network_interfaces_v6_subnet")]
                         pub subnet: String,
                         #[serde(default = "docker_network_interfaces_v6_gateway")]
@@ -609,7 +643,8 @@ nestify::nest! {
             #[serde(default)]
             pub domainname: String,
             #[serde(default)]
-            pub registries: HashMap<String, #[derive(Deserialize, Serialize)] pub struct DockerRegistryConfiguration {
+            #[schema(inline)]
+            pub registries: HashMap<String, #[derive(ToSchema, Deserialize, Serialize)] pub struct DockerRegistryConfiguration {
                 pub username: String,
                 pub password: String,
             }>,
@@ -620,7 +655,8 @@ nestify::nest! {
             pub container_pid_limit: u64,
 
             #[serde(default)]
-            pub installer_limits: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerInstallerLimits {
+            #[schema(inline)]
+            pub installer_limits: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerInstallerLimits {
                 #[serde(default = "docker_installer_limits_timeout")]
                 pub timeout: u64,
 
@@ -633,7 +669,8 @@ nestify::nest! {
             },
 
             #[serde(default)]
-            pub overhead: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerOverhead {
+            #[schema(inline)]
+            pub overhead: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerOverhead {
                 #[serde(default)]
                 pub r#override: bool,
                 #[serde(default = "docker_overhead_default_multiplier")]
@@ -648,7 +685,8 @@ nestify::nest! {
             pub userns_mode: String,
 
             #[serde(default)]
-            pub log_config: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerLogConfig {
+            #[schema(inline)]
+            pub log_config: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct DockerLogConfig {
                 #[serde(default = "docker_log_config_type")]
                 pub r#type: String,
                 #[serde(default = "docker_log_config_config")]
@@ -657,18 +695,24 @@ nestify::nest! {
         },
 
         #[serde(default)]
-        pub throttles: #[derive(Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Throttles {
+        #[schema(inline)]
+        pub throttles: #[derive(ToSchema, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct Throttles {
             #[serde(default = "throttles_enabled")]
             pub enabled: bool,
             #[serde(default = "throttles_lines")]
             pub lines: u64,
             #[serde(default = "throttles_line_reset_interval")]
+            /// ms
             pub line_reset_interval: u64,
         },
 
         pub remote: String,
         #[serde(default)]
-        pub remote_query: #[derive(Clone, Copy, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct RemoteQuery {
+        #[schema(inline)]
+        pub remote_headers: BTreeMap<String, String>,
+        #[serde(default)]
+        #[schema(inline)]
+        pub remote_query: #[derive(ToSchema, Clone, Copy, Deserialize, Serialize, DefaultFromSerde)] #[serde(default)] pub struct RemoteQuery {
             #[serde(default = "remote_query_timeout")]
             pub timeout: u64,
             #[serde(default = "remote_query_boot_servers_per_page")]
@@ -753,7 +797,7 @@ impl Config {
             .context(format!("failed to parse config file {path}"))?;
 
         let client = crate::remote::client::Client::new(&config, ignore_certificate_errors);
-        let jwt = crate::remote::jwt::JwtClient::new(&config.token);
+        let jwt = crate::remote::jwt::JwtClient::new(&config);
         let mut config = Self {
             inner: UnsafeCell::new(config),
 
@@ -782,7 +826,6 @@ impl Config {
 
         let (file_appender, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
             .buffered_lines_limit(50)
-            .lossy(false)
             .finish(latest_file.and(rolling_appender));
 
         config.ensure_user()?;
@@ -812,7 +855,7 @@ impl Config {
 
         if config.api.send_offline_server_logs && config.docker.delete_container_on_stop {
             tracing::warn!(
-                "You have enabled sending offline server logs, but also deleting containers on stop. This will result in no logs being sent for stopped servers."
+                "you have enabled sending offline server logs, but also deleting containers on stop. This will result in no logs being sent for stopped servers."
             );
         }
 
@@ -1084,7 +1127,7 @@ impl Config {
                 ))?;
 
             let driver = &self.docker.network.driver;
-            if driver != "host" && driver != "overlay" && driver != "weavemesh" {
+            if !matches!(driver.as_str(), "host" | "overlay" | "weavemesh") {
                 self.unsafe_mut().docker.network.interface =
                     self.docker.network.interfaces.v4.gateway.clone();
             }

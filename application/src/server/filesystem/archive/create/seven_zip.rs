@@ -4,7 +4,7 @@ use crate::io::{
     counting_reader::CountingReader,
 };
 use sevenz_rust2::{
-    EncoderConfiguration, EncoderMethod,
+    EncoderConfiguration, EncoderMethod, NtTime,
     encoder_options::{EncoderOptions, Lzma2Options},
 };
 use std::{
@@ -21,19 +21,19 @@ pub struct Create7zOptions {
     pub threads: usize,
 }
 
-pub async fn create_7z(
+pub async fn create_7z<W: Write + Seek + Send + 'static>(
     filesystem: crate::server::filesystem::cap::CapFilesystem,
-    destination: impl Write + Seek + Send + 'static,
+    destination: W,
     base: &Path,
     sources: Vec<PathBuf>,
     bytes_archived: Option<Arc<AtomicU64>>,
     ignored: Vec<ignore::gitignore::Gitignore>,
     options: Create7zOptions,
-) -> Result<(), anyhow::Error> {
+) -> Result<W, anyhow::Error> {
     let base = filesystem.relative_path(base);
     let (_guard, listener) = AbortGuard::new();
 
-    tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
+    tokio::task::spawn_blocking(move || {
         let writer = AbortWriter::new(destination, listener);
         let mut archive = sevenz_rust2::ArchiveWriter::new(writer)?;
 
@@ -46,6 +46,8 @@ pub async fn create_7z(
                 ),
             )),
         ]);
+
+        let mut directory_entries = chunked_vec::ChunkedVec::new();
 
         for source in sources {
             let relative = source;
@@ -63,17 +65,12 @@ pub async fn create_7z(
                 continue;
             }
 
-            let mut entry = sevenz_rust2::ArchiveEntry::new();
-            entry.name = relative.to_string_lossy().to_string();
-            entry.is_directory = source_metadata.is_dir();
-            if let Ok(mtime) = source_metadata.modified()
-                && let Ok(mtime) = mtime.into_std().try_into()
-            {
-                entry.last_modified_date = mtime;
-            }
+            let mtime = source_metadata
+                .modified()
+                .map_or(None, |mtime| NtTime::try_from(mtime.into_std()).ok());
 
             if source_metadata.is_dir() {
-                archive.push_archive_entry(entry, None::<Box<dyn Read + Send>>)?;
+                directory_entries.push((relative, mtime));
                 if let Some(bytes_archived) = &bytes_archived {
                     bytes_archived.fetch_add(source_metadata.len(), Ordering::SeqCst);
                 }
@@ -90,17 +87,12 @@ pub async fn create_7z(
                         Err(_) => continue,
                     };
 
-                    let mut entry = sevenz_rust2::ArchiveEntry::new();
-                    entry.name = relative.to_string_lossy().to_string();
-                    entry.is_directory = metadata.is_dir();
-                    if let Ok(mtime) = metadata.modified()
-                        && let Ok(mtime) = mtime.into_std().try_into()
-                    {
-                        entry.last_modified_date = mtime;
-                    }
+                    let mtime = source_metadata
+                        .modified()
+                        .map_or(None, |mtime| NtTime::try_from(mtime.into_std()).ok());
 
                     if metadata.is_dir() {
-                        archive.push_archive_entry(entry, None::<Box<dyn Read + Send>>)?;
+                        directory_entries.push((relative.to_path_buf(), mtime));
                         if let Some(bytes_archived) = &bytes_archived {
                             bytes_archived.fetch_add(metadata.len(), Ordering::SeqCst);
                         }
@@ -114,6 +106,12 @@ pub async fn create_7z(
                             None => Box::new(file),
                         };
 
+                        let mut entry =
+                            sevenz_rust2::ArchiveEntry::new_file(&relative.to_string_lossy());
+                        if let Some(mtime) = mtime {
+                            entry.has_last_modified_date = true;
+                            entry.last_modified_date = mtime;
+                        }
                         entry.size = metadata.len();
 
                         archive.push_archive_entry(entry, Some(reader))?;
@@ -129,18 +127,32 @@ pub async fn create_7z(
                     None => Box::new(file),
                 };
 
+                let mut entry = sevenz_rust2::ArchiveEntry::new_file(&relative.to_string_lossy());
+                if let Some(mtime) = mtime {
+                    entry.has_last_modified_date = true;
+                    entry.last_modified_date = mtime;
+                }
                 entry.size = source_metadata.len();
 
                 archive.push_archive_entry(entry, Some(reader))?;
             }
         }
 
-        let mut inner = archive.finish()?;
+        for (source_path, mtime) in directory_entries {
+            let mut entry =
+                sevenz_rust2::ArchiveEntry::new_directory(&source_path.to_string_lossy());
+            if let Some(mtime) = mtime {
+                entry.has_last_modified_date = true;
+                entry.last_modified_date = mtime;
+            }
+
+            archive.push_archive_entry(entry, None::<&[u8]>)?;
+        }
+
+        let mut inner = archive.finish()?.into_inner();
         inner.flush()?;
 
-        Ok(())
+        Ok(inner)
     })
-    .await??;
-
-    Ok(())
+    .await?
 }

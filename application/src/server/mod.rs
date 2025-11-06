@@ -10,10 +10,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use tokio::{
-    sync::{Mutex, RwLock},
-    task::AbortHandle,
-};
+use tokio::sync::{Mutex, RwLock};
 
 pub mod activity;
 pub mod backup;
@@ -50,7 +47,7 @@ pub struct InnerServer {
 
     pub state: state::ServerStateLock,
     pub outgoing_transfer: RwLock<Option<transfer::OutgoingServerTransfer>>,
-    pub incoming_transfer: RwLock<Option<AbortHandle>>,
+    pub incoming_transfer: RwLock<Option<transfer::IncomingServerTransfer>>,
     pub installation_script: RwLock<Option<(bool, installation::InstallationScript)>>,
 
     suspended: AtomicBool,
@@ -168,7 +165,7 @@ impl Server {
                     if usage != prev_usage {
                         let message = websocket::WebsocketMessage::new(
                             websocket::WebsocketEvent::ServerStats,
-                            &[serde_json::to_string(&usage).unwrap()],
+                            [serde_json::to_string(&usage).unwrap()].into(),
                         );
 
                         if let Err(err) = server.websocket.send(message) {
@@ -398,7 +395,7 @@ impl Server {
             .map(|c| c.stdin.clone())
     }
 
-    pub async fn container_stdout(&self) -> Option<tokio::sync::broadcast::Receiver<String>> {
+    pub async fn container_stdout(&self) -> Option<tokio::sync::broadcast::Receiver<Arc<String>>> {
         self.container
             .read()
             .await
@@ -676,7 +673,7 @@ impl Server {
         self.websocket
             .send(websocket::WebsocketMessage::new(
                 websocket::WebsocketEvent::ServerDaemonMessage,
-                &[message],
+                [message].into(),
             ))
             .ok();
     }
@@ -685,7 +682,7 @@ impl Server {
         self.websocket
             .send(websocket::WebsocketMessage::new(
                 websocket::WebsocketEvent::ServerInstallOutput,
-                &[message],
+                [message].into(),
             ))
             .ok();
     }
@@ -698,11 +695,12 @@ impl Server {
         self.websocket
             .send(websocket::WebsocketMessage::new(
                 websocket::WebsocketEvent::ServerConsoleOutput,
-                &[format!(
+                [format!(
                     "{} {}",
                     prelude,
                     ansi_term::Style::new().bold().paint(message)
-                )],
+                )]
+                .into(),
             ))
             .ok();
     }
@@ -721,11 +719,12 @@ impl Server {
     pub fn get_daemon_error(&self, message: &str) -> websocket::WebsocketMessage {
         websocket::WebsocketMessage::new(
             websocket::WebsocketEvent::ServerDaemonMessage,
-            &[ansi_term::Style::new()
+            [ansi_term::Style::new()
                 .bold()
                 .on(ansi_term::Color::Red)
                 .paint(message)
-                .to_string()],
+                .to_string()]
+            .into(),
         )
     }
 
@@ -778,7 +777,7 @@ impl Server {
                                         self.websocket
                                             .send(websocket::WebsocketMessage::new(
                                                 websocket::WebsocketEvent::ServerImagePullProgress,
-                                                &[
+                                                [
                                                     id,
                                                     serde_json::to_string(&crate::models::PullProgress {
                                                         status: crate::models::PullProgressStatus::Pulling,
@@ -786,7 +785,7 @@ impl Server {
                                                         total: progress_detail.total.unwrap_or_default()
                                                     })
                                                     .unwrap()
-                                                ],
+                                                ].into(),
                                             ))
                                             .ok();
                                     }
@@ -796,7 +795,7 @@ impl Server {
                                         self.websocket
                                             .send(websocket::WebsocketMessage::new(
                                                 websocket::WebsocketEvent::ServerImagePullProgress,
-                                                &[
+                                                [
                                                     id,
                                                     serde_json::to_string(&crate::models::PullProgress {
                                                         status: crate::models::PullProgressStatus::Extracting,
@@ -804,7 +803,7 @@ impl Server {
                                                         total: progress_detail.total.unwrap_or_default()
                                                     })
                                                     .unwrap()
-                                                ],
+                                                ].into(),
                                             ))
                                             .ok();
                                     }
@@ -813,7 +812,7 @@ impl Server {
                                     self.websocket
                                         .send(websocket::WebsocketMessage::new(
                                             websocket::WebsocketEvent::ServerImagePullCompleted,
-                                            &[id],
+                                            [id].into(),
                                         ))
                                         .ok();
                                 }

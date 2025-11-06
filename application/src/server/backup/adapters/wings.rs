@@ -4,6 +4,7 @@ use crate::{
         counting_reader::CountingReader,
         limited_reader::LimitedReader,
         limited_writer::LimitedWriter,
+        range_reader::AsyncRangeReader,
     },
     models::DirectoryEntry,
     remote::backups::RawServerBackup,
@@ -20,8 +21,12 @@ use crate::{
     },
 };
 use axum::{
-    body::Body,
-    http::{HeaderMap, HeaderValue},
+    http::{HeaderMap, HeaderValue, StatusCode},
+    response::IntoResponse,
+};
+use axum_extra::{
+    TypedHeader,
+    headers::{ContentRange, Range},
 };
 use cap_std::fs::{Permissions, PermissionsExt};
 use chrono::{Datelike, Timelike};
@@ -157,7 +162,7 @@ impl BackupCreateExt for WingsBackup {
                 server.app_state.config.system.backups.write_limit * 1024 * 1024,
             );
 
-            match server.app_state.config.system.backups.wings.archive_format {
+            let file = match server.app_state.config.system.backups.wings.archive_format {
                 ArchiveFormat::Tar
                 | ArchiveFormat::TarGz
                 | ArchiveFormat::TarXz
@@ -230,7 +235,11 @@ impl BackupCreateExt for WingsBackup {
                     )
                     .await
                 }
-            }
+            }?;
+
+            file.into_inner().sync_all()?;
+
+            Ok(())
         };
 
         let (total_files, _) = tokio::try_join!(total_task, archive_task)?;
@@ -246,10 +255,18 @@ impl BackupCreateExt for WingsBackup {
             }
         }
 
+        let size = tokio::fs::metadata(file_name).await?.len();
+
+        if size == 0 {
+            return Err(anyhow::anyhow!(
+                "backup file is 0 bytes, this should not be possible"
+            ));
+        }
+
         Ok(RawServerBackup {
             checksum: format!("{:x}", checksum_writer.finalize()),
             checksum_type: "sha1".to_string(),
-            size: tokio::fs::metadata(file_name).await?.len(),
+            size,
             files: total_files,
             successful: true,
             browsable: matches!(
@@ -273,10 +290,12 @@ impl BackupExt for WingsBackup {
         &self,
         _config: &Arc<crate::config::Config>,
         _archive_format: StreamableArchiveFormat,
+        range: Option<TypedHeader<Range>>,
     ) -> Result<ApiResponse, anyhow::Error> {
         let file = tokio::fs::File::open(&self.path).await?;
+        let metadata = file.metadata().await?;
 
-        let mut headers = HeaderMap::with_capacity(3);
+        let mut headers = HeaderMap::new();
         headers.insert(
             "Content-Disposition",
             HeaderValue::try_from(format!(
@@ -289,12 +308,31 @@ impl BackupExt for WingsBackup {
             "Content-Type",
             HeaderValue::from_static(self.format.mime_type()),
         );
-        headers.insert("Content-Length", file.metadata().await?.len().into());
+        headers.insert("Accept-Ranges", "bytes".parse()?);
 
-        Ok(ApiResponse::new(Body::from_stream(
-            tokio_util::io::ReaderStream::with_capacity(file, crate::BUFFER_SIZE),
-        ))
-        .with_headers(headers))
+        Ok(
+            if let Some(range) = range
+                && let Some(range_bounds) = range.satisfiable_ranges(metadata.len()).next()
+            {
+                let reader = AsyncRangeReader::new(file, range_bounds, metadata.len()).await?;
+
+                headers.insert("Content-Length", reader.len().into());
+                headers.extend(
+                    TypedHeader(ContentRange::bytes(range_bounds, Some(metadata.len()))?)
+                        .into_response()
+                        .headers_mut()
+                        .drain(),
+                );
+
+                ApiResponse::new_stream(reader)
+                    .with_headers(headers)
+                    .with_status(StatusCode::PARTIAL_CONTENT)
+            } else {
+                headers.insert("Content-Length", metadata.len().into());
+
+                ApiResponse::new_stream(file).with_headers(headers)
+            },
+        )
     }
 
     async fn restore(
@@ -1161,7 +1199,7 @@ impl BackupBrowseExt for BrowseWingsBackup {
                                                 reader,
                                             ));
 
-                                            Ok(true)
+                                            Ok(false)
                                         })?;
                                     }
                                     None => entries.push(Self::seven_zip_entry_to_directory_entry(
@@ -1206,7 +1244,7 @@ impl BackupBrowseExt for BrowseWingsBackup {
                                                 reader,
                                             ));
 
-                                            Ok(true)
+                                            Ok(false)
                                         })?;
                                     }
                                     None => entries.push(Self::seven_zip_entry_to_directory_entry(
@@ -1232,7 +1270,8 @@ impl BackupBrowseExt for BrowseWingsBackup {
     async fn read_file(
         &self,
         path: PathBuf,
-    ) -> Result<(u64, Box<dyn tokio::io::AsyncRead + Unpin + Send>), anyhow::Error> {
+        _range: Option<TypedHeader<Range>>,
+    ) -> Result<(HeaderMap, Box<dyn tokio::io::AsyncRead + Unpin + Send>), anyhow::Error> {
         let archive = self.archive.clone();
 
         match archive {
@@ -1261,7 +1300,10 @@ impl BackupBrowseExt for BrowseWingsBackup {
                     }
                 });
 
-                Ok((size, Box::new(reader)))
+                let mut headers = HeaderMap::new();
+                headers.insert("Content-Length", size.into());
+
+                Ok((headers, Box::new(reader)))
             }
             BrowseWingsBackupArchive::SevenZip(archive, mut archive_reader) => {
                 let (entry_index, size) = match archive
@@ -1325,7 +1367,10 @@ impl BackupBrowseExt for BrowseWingsBackup {
                     };
                 });
 
-                Ok((size, Box::new(reader)))
+                let mut headers = HeaderMap::new();
+                headers.insert("Content-Length", size.into());
+
+                Ok((headers, Box::new(reader)))
             }
         }
     }
@@ -1512,7 +1557,7 @@ impl BackupBrowseExt for BrowseWingsBackup {
                                                 &mut zip,
                                             )?;
 
-                                            Ok(true)
+                                            Ok(false)
                                         })
                                         .unwrap_or_default();
                                 };
@@ -1582,7 +1627,7 @@ impl BackupBrowseExt for BrowseWingsBackup {
 
                                             tar.append_data(&mut entry_header, name, reader)?;
 
-                                            Ok(true)
+                                            Ok(false)
                                         })
                                         .unwrap_or_default();
                                 };
@@ -1795,7 +1840,7 @@ impl BackupBrowseExt for BrowseWingsBackup {
                                                 &mut zip,
                                             )?;
 
-                                            Ok(true)
+                                            Ok(false)
                                         })
                                         .unwrap_or_default();
                                 };
@@ -1869,7 +1914,7 @@ impl BackupBrowseExt for BrowseWingsBackup {
 
                                             tar.append_data(&mut entry_header, name, reader)?;
 
-                                            Ok(true)
+                                            Ok(false)
                                         })
                                         .unwrap_or_default();
                                 };

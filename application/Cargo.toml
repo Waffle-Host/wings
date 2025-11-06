@@ -1,6 +1,6 @@
 [package]
 name = "wings-rs"
-version = "0.20.8"
+version = "0.21.10"
 edition = "2024"
 
 [dependencies]
@@ -31,7 +31,7 @@ tokio-util = { workspace = true }
 uuid = { workspace = true }
 rand = { workspace = true }
 tar = "0.4.44"
-zip = { version = "5.1.1", default-features = false, features = ["bzip2", "deflate", "sha1", "time", "zstd", "lzma", "xz"] }
+zip = { version = "6.0.0", default-features = false, features = ["bzip2", "deflate", "sha1", "time", "zstd", "lzma", "xz"] }
 sevenz-rust2 = { version = "0.19.0", features = ["deflate", "compress", "brotli", "zstd", "bzip2", "ppmd", "lz4"] }
 flate2 = { version = "1.1.1", features = ["zlib-rs"], default-features = false }
 jwt = "0.16.0"
@@ -53,7 +53,7 @@ dialoguer = "0.12.0"
 sysinfo = "0.37.0"
 crc32fast = "1.4.2"
 cap-std = "3.4.4"
-rustix = "1.0.7"
+rustix = { version = "1.0.7", features = ["system"] }
 cidr = { version = "0.3.1", features = ["serde"] }
 hickory-resolver = "0.25.2"
 constant_time_eq = "0.4.2"
@@ -62,13 +62,14 @@ async-trait = "0.1.88"
 content_disposition = "0.4.0"
 cron = { version = "0.15.0", features = ["serde"] }
 chrono-tz = "0.10.4"
-gzp = "1.0.1"
-lzma-rust2 = { version = "0.14.0", features = ["optimization"] }
+gzp = "2.0.0"
+lzma-rust2 = { version = "0.15.0", features = ["optimization"] }
 bzip2 = "0.6.0"
-lz4 = "1.28.1"
 zstd = { version = "0.13.3", features = ["zstdmt"] }
 base64 = "0.22.1"
 chunked_vec = "=0.3.4"
+async-channel = "2.5.0"
+lzzzz = "2.0.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemallocator = "0.6.0"

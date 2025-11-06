@@ -1,7 +1,9 @@
 use super::State;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+mod config;
 mod logs;
+mod stats;
 mod upgrade;
 
 mod get {
@@ -10,7 +12,7 @@ mod get {
         routes::GetState,
     };
     use serde::Serialize;
-    use tokio::process::Command;
+    use std::sync::LazyLock;
     use utoipa::ToSchema;
 
     #[derive(ToSchema, Serialize)]
@@ -26,17 +28,17 @@ mod get {
         (status = OK, body = inline(Response)),
     ))]
     pub async fn route(state: GetState) -> ApiResponseResult {
-        let kernel_version = Command::new("uname")
-            .arg("-r")
-            .output()
-            .await
-            .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
+        static KERNEL_VERSION: LazyLock<String> = LazyLock::new(|| {
+            rustix::system::uname()
+                .release()
+                .to_string_lossy()
+                .to_string()
+        });
 
         ApiResponse::json(Response {
             architecture: std::env::consts::ARCH,
             cpu_count: rayon::current_num_threads(),
-            kernel_version: kernel_version.trim(),
+            kernel_version: &KERNEL_VERSION,
             os: std::env::consts::OS,
             version: &state.version,
         })
@@ -49,5 +51,7 @@ pub fn router(state: &State) -> OpenApiRouter<State> {
         .routes(routes!(get::route))
         .nest("/logs", logs::router(state))
         .nest("/upgrade", upgrade::router(state))
+        .nest("/config", config::router(state))
+        .nest("/stats", stats::router(state))
         .with_state(state.clone())
 }

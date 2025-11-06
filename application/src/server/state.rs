@@ -36,7 +36,7 @@ impl From<u8> for ServerState {
             1 => ServerState::Starting,
             2 => ServerState::Stopping,
             3 => ServerState::Running,
-            _ => panic!("Invalid server state"),
+            _ => ServerState::Offline,
         }
     }
 }
@@ -87,7 +87,7 @@ impl ServerStateLock {
         self.sender
             .send(super::websocket::WebsocketMessage::new(
                 super::websocket::WebsocketEvent::ServerStatus,
-                &[state.to_str().to_string()],
+                [state.to_str().to_string()].into(),
             ))
             .unwrap_or_default();
     }

@@ -20,7 +20,7 @@ static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 fn cli() -> Command {
     Command::new("wings-rs")
         .about(
-            "The API server allowing programmatic control of game servers for Pterodactyl Panel.",
+            "The API server allowing programmatic control of game servers for Calagopus/Pterodactyl Panel.",
         )
         .allow_external_subcommands(true)
         .arg(
@@ -341,6 +341,7 @@ async fn main() {
         version: format!("{}:{}", wings_rs::VERSION, wings_rs::GIT_COMMIT),
 
         docker: Arc::clone(&docker),
+        stats_manager: Arc::new(wings_rs::stats::StatsManager::default()),
         server_manager: Arc::new(wings_rs::server::manager::Manager::new(&servers)),
         backup_manager: Arc::new(wings_rs::server::backup::manager::BackupManager::new(
             Arc::clone(&config),
@@ -367,7 +368,7 @@ async fn main() {
     let (mut router, mut openapi) = app.split_for_parts();
     openapi.info.version = state.version.clone();
     openapi.info.description = None;
-    openapi.info.title = "Pterodactyl Wings API".to_string();
+    openapi.info.title = format!("{} Wings API", config.app_name);
     openapi.info.contact = None;
     openapi.info.license = None;
     openapi.components.as_mut().unwrap().add_security_scheme(

@@ -13,20 +13,20 @@ pub struct Container {
         Option<
             tokio::sync::mpsc::Receiver<(
                 bollard::models::ContainerState,
-                crate::server::resources::ResourceUsage,
+                super::resources::ResourceUsage,
             )>,
         >,
     >,
 
     state_reciever: tokio::task::JoinHandle<()>,
 
-    pub resource_usage: Arc<RwLock<crate::server::resources::ResourceUsage>>,
+    pub resource_usage: Arc<RwLock<super::resources::ResourceUsage>>,
     resource_usage_reciever: tokio::task::JoinHandle<()>,
 
     pub stdin: tokio::sync::mpsc::Sender<String>,
     stdin_reciever: tokio::task::JoinHandle<()>,
 
-    pub stdout: tokio::sync::broadcast::Receiver<String>,
+    pub stdout: tokio::sync::broadcast::Receiver<Arc<String>>,
     stdout_reciever: tokio::task::JoinHandle<()>,
 }
 
@@ -215,7 +215,7 @@ impl Container {
                         && ratelimit_counter >= server.app_state.config.throttles.lines
                     {
                         if ratelimit_start.elapsed()
-                            < std::time::Duration::from_secs(
+                            < std::time::Duration::from_millis(
                                 server.app_state.config.throttles.line_reset_interval,
                             )
                         {
@@ -304,7 +304,7 @@ impl Container {
 
                                 check_startup(&line).await;
                                 if allow_ratelimit().await
-                                    && let Err(err) = stdout_sender.send(line)
+                                    && let Err(err) = stdout_sender.send(line.into())
                                 {
                                     tracing::error!(
                                         server = %server_uuid,
@@ -324,7 +324,7 @@ impl Container {
 
                                 check_startup(&line).await;
                                 if allow_ratelimit().await
-                                    && let Err(err) = stdout_sender.send(line)
+                                    && let Err(err) = stdout_sender.send(line.into())
                                 {
                                     tracing::error!(
                                         server = %server_uuid,
@@ -345,7 +345,7 @@ impl Container {
                                 .trim()
                                 .to_string();
                                 if allow_ratelimit().await
-                                    && let Err(err) = stdout_sender.send(line)
+                                    && let Err(err) = stdout_sender.send(line.into())
                                 {
                                     tracing::error!(
                                         server = %server_uuid,
@@ -372,7 +372,7 @@ impl Container {
                     let line = String::from_utf8_lossy(&buffer[line_start..])
                         .trim()
                         .to_string();
-                    if let Err(err) = stdout_sender.send(line) {
+                    if let Err(err) = stdout_sender.send(line.into()) {
                         tracing::error!(
                             server = %server_uuid,
                             error = %err,

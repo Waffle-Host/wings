@@ -81,7 +81,7 @@ mod post {
                 .ok();
         }
 
-        if !state.config.jwt.one_time_id(&payload.unique_id).await {
+        if !state.config.jwt.limited_jwt_id(&payload.unique_id).await {
             return ApiResponse::error("token has already been used")
                 .with_status(StatusCode::UNAUTHORIZED)
                 .ok();
@@ -178,7 +178,7 @@ mod post {
 
             while let Ok(Some(chunk)) = field.chunk().await {
                 if crate::unlikely(
-                    written_size + chunk.len() > state.config.api.upload_limit * 1000 * 1000,
+                    written_size + chunk.len() > state.config.api.upload_limit * 1024 * 1024,
                 ) {
                     return ApiResponse::error(&format!(
                         "file size is larger than {}MB",

@@ -17,6 +17,8 @@ pub enum Permission {
 
     #[serde(rename = "websocket.connect")]
     WebsocketConnect,
+    #[serde(rename = "control.read-console")]
+    ControlReadConsole,
     #[serde(rename = "control.console")]
     ControlConsole,
     #[serde(rename = "control.start")]
@@ -51,6 +53,7 @@ pub enum Permission {
 }
 
 impl Permission {
+    #[inline]
     pub fn is_admin(self) -> bool {
         matches!(
             self,
@@ -60,6 +63,7 @@ impl Permission {
         )
     }
 
+    #[inline]
     pub fn matches(self, other: Permission) -> bool {
         self == other || (other == Permission::All && !other.is_admin())
     }
@@ -147,6 +151,7 @@ impl UserPermissionsMap {
         );
     }
 
+    #[inline]
     pub async fn is_contained(&self, user_id: uuid::Uuid) -> bool {
         self.map.read().await.contains_key(&user_id)
     }
